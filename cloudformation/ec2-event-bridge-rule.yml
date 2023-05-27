@@ -1,0 +1,46 @@
+---
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Sending all EC2 create/terminate events to management account for bootstrapping'
+
+Parameters:
+  ManagementAccountId:
+    Description: The account ID of the management account
+    Type: AWS::SSM::Parameter::Value<String>
+
+  EventsToMgmtRoleArn:
+    Description: IAM Role to allow crossaccount events streaming
+    Type: AWS::SSM::Parameter::Value<String>
+
+  S3CMKArn:
+    Description: S3 KMS Key arn
+    Type: AWS::SSM::Parameter::Value<String>
+
+  BucketName:
+    Description: Name of the bucket with scripts
+    Type: String
+    AllowedPattern: '^.+$'
+
+Conditions:
+  IsNotMgmt: !Not [!Equals [!Ref 'AWS::AccountId', !Ref ManagementAccountId]]
+
+Resources:
+  EC2EventRule:
+    Type: AWS::Events::Rule
+    Condition: IsNotMgmt
+    Properties:
+      Description: Sending all EC2 create/terminate events to management account for boostrapping
+      EventPattern:
+        detail-type:
+          - AWS API Call via CloudTrail
+        detail:
+          eventSource:
+            - ec2.amazonaws.com
+          eventName:
+            - RunInstances
+            - TerminateInstances
+      Name: InstanceRule-Stream-to-Management
+      State: ENABLED
+      Targets:
+        - Arn: !Sub 'arn:aws:events:${AWS::Region}:${ManagementAccountId}:event-bus/default'
+          Id: !Ref ManagementAccountId
+          RoleArn: !Ref EventsToMgmtRoleArn
